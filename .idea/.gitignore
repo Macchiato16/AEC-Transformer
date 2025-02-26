@@ -6,14 +6,3 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
-
-/data/synthetic/
-/data/preprocessed/
-*.wav
-*.npz
-*.npy
-*.pt
-*.csv
-*.json
-*.log
-*.txt
