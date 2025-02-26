@@ -21,7 +21,7 @@ class PositionalEncoding(nn.Module):
         # 这样可以得到位置编码公式中的分母项10000^(2i/d_model)
         div_term = torch.exp(torch.arange(0, embedding_dim, 2).float() * (-math.log(10000.0) / embedding_dim))
         
-        # position / div_term shape: [max_len, embedding_dim/2]
+        # position * div_term shape: [max_len, embedding_dim/2]
         # 将sin函数应用于偶数索引位置 shape: [max_len, embedding_dim/2]
         pe[:, 0::2] = torch.sin(position * div_term)
         # 将cos函数应用于奇数索引位置 shape: [max_len, embedding_dim/2] 
