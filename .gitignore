@@ -12,8 +12,6 @@
 *.wav
 *.npz
 *.npy
-*.pt
-*.csv
 *.json
 *.log
 *.txt
