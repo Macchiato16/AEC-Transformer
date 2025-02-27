@@ -38,7 +38,7 @@ class Config:
         
         # 训练参数
         self.batch_size = 32
-        self.num_workers = multiprocessing.cpu_count()
+        self.num_workers = min(multiprocessing.cpu_count(), 8)
         
         # 处理参数
         self.min_db = -80  # 对数谱的最小dB值
@@ -224,53 +224,43 @@ class AECDataset(Dataset):
         self.stride = stride
         self.transform = transform
         
-        # 读取数据集信息
+        # 在 __init__ 中打开 HDF5 文件
+        self.h5_file = h5py.File(h5_path, 'r')
+        self.config = self.h5_file['config']
+        self.feature_dim = self.config.attrs['feature_dim']
+
         self.sample_indices = []
-        with h5py.File(h5_path, 'r') as f:
-            # 读取配置
-            config = f['config']
-            self.feature_dim = config.attrs['feature_dim']
-            
-            # 遍历所有样本，准备索引
-            for i in range(len(f.keys()) - 1):  # 减1是因为有一个'config'组
-                sample_key = f'sample_{i}'
-                if sample_key in f:
-                    features = f[sample_key]['features'][()]
-                    num_frames = features.shape[0]
-                    
-                    # 计算可以提取的子序列数量
-                    for start_idx in range(0, num_frames - max_seq_len + 1, stride):
-                        self.sample_indices.append((i, start_idx))
+        for i in range(len(self.h5_file.keys()) - 1):
+            sample_key = f'sample_{i}'
+            if sample_key in self.h5_file:
+                features = self.h5_file[sample_key]['features']
+                num_frames = features.shape[0]
+                for start_idx in range(0, num_frames - max_seq_len + 1, stride):
+                    self.sample_indices.append((i, start_idx))
     
     def __len__(self):
         return len(self.sample_indices)
     
     def __getitem__(self, idx):
         sample_idx, start_frame = self.sample_indices[idx]
-        
-        with h5py.File(self.h5_path, 'r') as f:
-            sample_key = f'sample_{sample_idx}'
-            features = f[sample_key]['features'][()]
-            masks = f[sample_key]['masks'][()]
-            
-            # 提取子序列
-            end_frame = start_frame + self.max_seq_len
-            feature_seq = features[start_frame:end_frame]
-            mask_seq = masks[start_frame:end_frame]
-            
-            # 应用变换
-            if self.transform:
-                feature_seq, mask_seq = self.transform(feature_seq, mask_seq)
-            
-            # 转换为PyTorch张量
-            feature_tensor = torch.FloatTensor(feature_seq)
-            mask_tensor = torch.FloatTensor(mask_seq)
-            
-            return feature_tensor, mask_tensor
+        sample_key = f'sample_{sample_idx}'
+
+        # 直接从已打开的 HDF5 文件中读取数据
+        features = self.h5_file[sample_key]['features'][start_frame:start_frame + self.max_seq_len]
+        masks = self.h5_file[sample_key]['masks'][start_frame:start_frame + self.max_seq_len]
+
+        if self.transform:
+            features, masks = self.transform(features, masks)
+
+        return torch.FloatTensor(features), torch.FloatTensor(masks)
+    def __del__(self):
+        # 在对象销毁时关闭 HDF5 文件
+        if hasattr(self, 'h5_file') and self.h5_file:
+            self.h5_file.close()
 
 # 带有缓存功能的数据集类（用于训练加速）
 class CachedAECDataset(Dataset):
-    def __init__(self, h5_path, max_seq_len=128, stride=64, transform=None, cache_size=1000):
+    def __init__(self, h5_path, max_seq_len=128, stride=64, transform=None, cache_size=10000):
         """
         带缓存功能的声学回声消除数据集
         
