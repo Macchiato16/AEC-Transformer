@@ -260,7 +260,7 @@ class AECDataset(Dataset):
 
 # 带有缓存功能的数据集类（用于训练加速）
 class CachedAECDataset(Dataset):
-    def __init__(self, h5_path, max_seq_len=128, stride=64, transform=None, cache_size=10000):
+    def __init__(self, h5_path, max_seq_len=128, stride=64, transform=None, cache_size=2000):
         """
         带缓存功能的声学回声消除数据集
         
