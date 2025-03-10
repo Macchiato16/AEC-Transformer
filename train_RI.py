@@ -11,22 +11,22 @@ from tqdm import tqdm
 import argparse
 import psutil
 import gc
-from preprocess import CachedAECDataset, Config
+from preprocess_RI import CachedAECDataset, Config
 from model.transfomer import TransformerEchoCancellation
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='训练回声消除Transformer模型')
-    parser.add_argument('--epochs', type=int, default=30, help='训练轮数')
+    parser.add_argument('--epochs', type=int, default=70, help='训练轮数')
     parser.add_argument('--batch_size', type=int, default=32, help='批次大小')  # 默认减小批次大小
     parser.add_argument('--lr', type=float, default=0.0001, help='学习率')
     parser.add_argument('--save_interval', type=int, default=5, help='模型保存间隔（轮数）')
     parser.add_argument('--log_interval', type=int, default=10, help='日志打印间隔（批次数）')
-    parser.add_argument('--resume', type=str, default='', help='恢复训练的检查点路径')
-    parser.add_argument('--use_cuda', action='store_true', help='使用CUDA')
+    parser.add_argument('--resume', type=str, default='checkpoints_RI/model_final.pt', help='恢复训练的检查点路径')
+    parser.add_argument('--use_cuda', action='store_true', default=True,help='使用CUDA')
     parser.add_argument('--gradient_accumulation', type=int, default=1, help='梯度累积步数')
-    parser.add_argument('--mixed_precision', action='store_true', help='使用混合精度训练')
-    parser.add_argument('--memory_monitor', action='store_true', help='是否监控内存使用情况')
+    parser.add_argument('--mixed_precision', action='store_true', default=True,help='使用混合精度训练')
+    parser.add_argument('--memory_monitor', action='store_true',default=True, help='是否监控内存使用情况')
     parser.add_argument('--memory_log_interval', type=int, default=5, help='内存监控日志打印间隔（批次数）')
     return parser.parse_args()
 
@@ -49,13 +49,15 @@ def create_model(config):
 def load_datasets(config, batch_size):
     # 加载训练集和验证集
     train_dataset = CachedAECDataset(
-        os.path.join(config.output_dir, 'train.h5'),
+        config.output_dir,
+        dataset_type='train',
         max_seq_len=config.max_seq_len,
         stride=config.max_seq_len // 2  # 50%重叠
     )
 
     val_dataset = CachedAECDataset(
-        os.path.join(config.output_dir, 'val.h5'),
+        config.output_dir,
+        dataset_type='val',
         max_seq_len=config.max_seq_len,
         stride=config.max_seq_len  # 验证集不需要重叠
     )
@@ -95,29 +97,20 @@ def save_checkpoint(model, optimizer, epoch, loss, save_path):
 
 
 def plot_losses(train_losses, val_losses, save_path):
-    # 设置中文字体
-    plt.rcParams['font.sans-serif'] = ['SimHei']  # 设置中文字体为黑体
-    plt.rcParams['axes.unicode_minus'] = False     # 解决负号显示问题
-    
     plt.figure(figsize=(10, 5))
-    plt.plot(train_losses, label='训练损失')
-    plt.plot(val_losses, label='验证损失')
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.title('训练和验证损失')
+    plt.title('Training and Validation Loss')
     plt.legend()
     plt.grid(True)
-    plt.tight_layout()  # 自动调整布局
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')  # 提高分辨率，保存完整图像
+    plt.savefig(save_path)
     plt.close()
 
 
 def plot_memory_usage(cpu_memory, gpu_memory, save_path):
     """绘制内存使用曲线"""
-    # 设置中文字体
-    plt.rcParams['font.sans-serif'] = ['SimHei']  # 设置中文字体为黑体
-    plt.rcParams['axes.unicode_minus'] = False     # 解决负号显示问题
-    
     plt.figure(figsize=(12, 8))
     
     # 创建两个子图
@@ -125,24 +118,24 @@ def plot_memory_usage(cpu_memory, gpu_memory, save_path):
     
     # CPU内存使用图
     x_values = list(range(len(cpu_memory)))
-    ax1.plot(x_values, cpu_memory, 'b-', label='CPU内存')
-    ax1.set_xlabel('迭代次数')
-    ax1.set_ylabel('内存使用量 (GB)')
-    ax1.set_title('训练过程CPU内存使用情况')
+    ax1.plot(x_values, cpu_memory, 'b-', label='CPU Memory')
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Memory Usage (GB)')
+    ax1.set_title('CPU Memory Usage During Training')
     ax1.grid(True)
     ax1.legend()
     
     # GPU内存使用图（如果有）
     if gpu_memory:
-        ax2.plot(x_values, gpu_memory, 'r-', label='GPU内存')
-        ax2.set_xlabel('迭代次数')
-        ax2.set_ylabel('内存使用量 (GB)')
-        ax2.set_title('训练过程GPU内存使用情况')
+        ax2.plot(x_values, gpu_memory, 'r-', label='GPU Memory')
+        ax2.set_xlabel('Iteration')
+        ax2.set_ylabel('Memory Usage (GB)')
+        ax2.set_title('GPU Memory Usage During Training')
         ax2.grid(True)
         ax2.legend()
     
-    plt.tight_layout()  # 自动调整布局
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')  # 提高分辨率，保存完整图像
+    plt.tight_layout()
+    plt.savefig(save_path)
     plt.close()
 
 
@@ -357,7 +350,7 @@ def main():
     print(f"可训练参数量: {trainable_params:,}")
 
     # 定义损失函数和优化器
-    criterion = nn.BCELoss()  # 使用二元交叉熵损失函数，适用于0-1之间的掩码预测
+    criterion = nn.MSELoss()  
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     
     # 添加学习率调度器
@@ -366,14 +359,13 @@ def main():
     # 设置混合精度训练
     scaler = None
     if args.mixed_precision and use_cuda:
-        import torch.amp as amp
+        from torch.cuda.amp import GradScaler, autocast
         # 使用 amp.GradScaler.init 方法替代直接构造函数
-        scaler = amp.GradScaler.init(
-            init_scale=2.**16,
+        scaler = GradScaler(
+            init_scale=2**16,
             growth_factor=2.0,
             backoff_factor=0.5,
             growth_interval=2000,
-            enabled=True
         )
         print("启用混合精度训练")
 
@@ -389,7 +381,7 @@ def main():
     all_gpu_memory = []
 
     # 创建保存模型和日志的目录
-    checkpoint_dir = "checkpoints"
+    checkpoint_dir = "checkpoints_RI"
     log_dir = "logs"
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
@@ -488,6 +480,7 @@ def main():
         if (epoch + 1) % args.save_interval == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f"model_epoch_{epoch + 1}.pt")
             save_checkpoint(model, optimizer, epoch, val_loss, checkpoint_path)
+            
 
         # 绘制损失曲线
         loss_plot_path = os.path.join(log_dir, "loss_curve.png")

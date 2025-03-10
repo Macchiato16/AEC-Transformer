@@ -15,3 +15,17 @@
 *.json
 *.log
 *.txt
+*.pt
+*.pth
+*.pth.tar
+*.pth.tar.gz
+*.pth.tar.xz
+*.pth.tar.bz2
+*.pth.tar.lzma
+*.h5
+*.hdf5
+*.hdf
+*.hdf.gz
+*.hdf.xz
+*.hdf.bz2
+*.hdf.lzma

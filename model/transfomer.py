@@ -32,13 +32,12 @@ class TransformerEchoCancellation(nn.Module):
         # 输出: [batch_size, seq_len, d_model]
         self.encoder = Encoder(num_layers, d_model, num_heads, d_ff, dropout_prob)
         
-        # 输出层，生成理想掩码
+        # 输出层，生成预测实部与虚部
         # 最终输出: [batch_size, seq_len, freq_bins]
         self.output_layer = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),  # [batch_size, seq_len, d_model//2]
-            nn.ReLU(),
-            nn.Linear(d_model // 2, freq_bins),  # [batch_size, seq_len, freq_bins]
-            nn.Sigmoid()  # 掩码值应在 0-1 之间
+            nn.Linear(d_model, freq_bins),  # [batch_size, seq_len, d_model//2]
+             # [batch_size, seq_len, freq_bins]
+            # nn.Sigmoid()  
         )
         
     def forward(self, x, mask=None):
@@ -60,9 +59,9 @@ class TransformerEchoCancellation(nn.Module):
         # 通过编码器: [batch_size, seq_len, d_model] -> [batch_size, seq_len, d_model]
         encoded = self.encoder(x, mask)
         
-        # 生成掩码: [batch_size, seq_len, d_model] -> [batch_size, seq_len, freq_bins]
-        mask_output = self.output_layer(encoded)
+        # 生成输出: [batch_size, seq_len, d_model] -> [batch_size, seq_len, freq_bins]
+        output = self.output_layer(encoded)
         
-        return mask_output
+        return output
     
     
